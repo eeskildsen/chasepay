@@ -1,0 +1,16 @@
+{
+  "name": "chasepay",
+  "version": "0.0.0",
+  "description": "pay chase credit card bills from the command line",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ryan Buckheit",
+  "license": "MIT",
+  "dependencies": {
+    "bluebird"           : "3.3.5",
+    "commander"          : "2.9.0",
+    "selenium-webdriver" : "2.53.2"
+  }
+}
