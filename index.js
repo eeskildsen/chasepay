@@ -10,7 +10,7 @@ const childProcess = require('child_process');
 const P            = require('bluebird');
 const webdriver    = require('selenium-webdriver');
 
-const PAGE_LOAD_DELAY_MILLIS = 3000;
+const PAGE_LOAD_DELAY_MILLIS = 6000;
 
 //
 // Pays chase credit card bills using selenium and chrome.
