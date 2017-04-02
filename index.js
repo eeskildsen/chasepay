@@ -9,8 +9,9 @@ const fs        = require ('fs');
 const childProcess = require('child_process');
 const P            = require('bluebird');
 const webdriver    = require('selenium-webdriver');
+const By = webdriver.By
 
-const PAGE_LOAD_DELAY_MILLIS = 6000;
+const PAGE_LOAD_DELAY_MILLIS = 5000;
 
 //
 // Pays chase credit card bills using selenium and chrome.
@@ -18,59 +19,52 @@ const PAGE_LOAD_DELAY_MILLIS = 6000;
 //
 
 const login = P.coroutine(function*(driver, username, password) {
-  yield driver.navigate().to('https://chaseonline.chase.com/');
-  yield driver.findElement({id: 'UserID'}).sendKeys(username);
-  yield driver.findElement({id: 'Password'}).sendKeys(password);
-  yield driver.findElement({id: 'logon'}).click();
+  yield driver.navigate().to('https://secure07a.chase.com/web/auth/dashboard');
+  yield P.delay(PAGE_LOAD_DELAY_MILLIS);
+  yield driver.switchTo().frame('logonbox');
+
+  yield driver.findElement({id: 'userId-input-field'}).sendKeys(username);
+  yield driver.findElement({id: 'password-input-field'}).sendKeys(password);
+  yield driver.findElement({id: 'signin-button'}).click();
+
+  yield driver.switchTo().defaultContent();
 });
 
-const getPaymentLinks = P.coroutine(function*(driver) {
-  const linkSelector = {xpath: "//*[contains(text(), 'Pay credit card')]"};
-  const links = yield driver.findElements(linkSelector);
+const payBills = P.coroutine(function*(driver) {
+  yield driver.navigate().to('https://secure01c.chase.com/web/auth/dashboard#/dashboard/payMultipleBills/payments/index')
+  yield P.delay(PAGE_LOAD_DELAY_MILLIS);
 
-  const linksParsed = yield P.all(links.map((link) => {
-    return link.getText().then((text) => {
-      return link.getAttribute('href').then((href) => {
-        return {
-          text: text,
-          href: href,
-          mask: text.slice(text.indexOf('Chase')),
-        };
-      });
-    });
-  }));
+  const cardNums = [0,1,2,3];
 
-  return linksParsed.filter(link => link.text.indexOf('Chase') >= 0);
-});
+  // open the payment dropdowns
+  yield P.reduce(cardNums , (chain, index) => P.resolve(chain).then(() =>
+    driver.findElements(By.className('payeeAccount'))
+      .then(elts => (elts[index] != null) ? elts[index].click() : P.resolve())
+      .then(() => P.delay(1000))
+  ), P.resolve());
 
-const payCardByLink = P.coroutine(function*(driver, link) {
-  console.info('paying card ' + link.mask);
+  // set payment dropdowns to current amount
+  yield P.reduce(cardNums, (chain, index) => P.resolve(chain).then(() =>
+    driver.findElements(By.id('header-paymentDueAmountOption_' + index))
+    .then(elts => {
+      console.info(elts);
+      const elt = elts[0];
+      if (elt != null) {
+        return driver.executeScript("arguments[0].scrollIntoView(true);", elt)
+          .then(() => driver.actions().click(elt).sendKeys(webdriver.Key.ENTER).perform())
+      } else {
+        return P.resolve();
+      }
+    }).then(() => P.delay(1000))
+  ), P.resolve())
 
-  yield driver.navigate().to(link.href);
+  // click the pay button
+  driver.findElement(By.id('verify-bill-payments')).click();
 
   yield P.delay(PAGE_LOAD_DELAY_MILLIS);
 
-  const isCreditCardPayable = yield driver.isElementPresent({id: 'CurrentBalanceRadio'});
-
-  const pageSource = yield driver.getPageSource();
-
-  const isPaymentPending = pageSource.indexOf('You\'ve scheduled a payment for') > 0;
-
-  if (isCreditCardPayable && !isPaymentPending) {
-    yield driver.findElement({id: 'CurrentBalanceRadio'}).click();
-    yield P.delay(PAGE_LOAD_DELAY_MILLIS);
-    yield driver.executeScript('scrollBy(0, 10000)');
-    yield driver.findElement({id: 'NextBtn'}).click();
-    yield P.delay(PAGE_LOAD_DELAY_MILLIS);
-    yield driver.executeScript('scrollBy(0, 10000)');
-    yield driver.findElement({id: 'NextBtn'}).click();
-    yield P.delay(PAGE_LOAD_DELAY_MILLIS);
-    console.info('paid card successfully');
-  } else if (isPaymentPending) {
-    console.info('payment pending, no payment needed');
-  } else {
-    console.info('zero balance, no payment needed');
-  }
+  // click the confirm button
+  driver.findElement(By.id('confirm-bill-payments')).click();
 });
 
 const scriptRunner = P.coroutine(function*(username, password) {
@@ -78,17 +72,13 @@ const scriptRunner = P.coroutine(function*(username, password) {
     .forBrowser('chrome')
     .build();
 
+  yield P.delay(PAGE_LOAD_DELAY_MILLIS);
+
   yield login(driver, username, password);
 
   yield P.delay(PAGE_LOAD_DELAY_MILLIS);
 
-  const links = yield getPaymentLinks(driver);
-
-  console.info('found ' + links.length + ' cards to pay',
-    JSON.stringify(links.map(l => l.mask)));
-
-  yield P.reduce(links, (promise, link) =>
-    P.resolve(promise).then(() => payCardByLink(driver, link)), P.resolve());
+  yield payBills(driver);
 
   yield driver.quit();
 });

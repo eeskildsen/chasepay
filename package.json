@@ -9,8 +9,11 @@
   "author": "Ryan Buckheit",
   "license": "MIT",
   "dependencies": {
-    "bluebird"           : "3.3.5",
-    "commander"          : "2.9.0",
-    "selenium-webdriver" : "2.53.2"
+    "bluebird": "3.3.5",
+    "commander": "2.9.0",
+    "nightmare": "2.9.x",
+    "nightmare-iframe": "^1.0.2",
+    "nightmare-iframe-manager": "0.0.4",
+    "selenium-webdriver": "^3.3.0"
   }
 }
