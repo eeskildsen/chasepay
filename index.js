@@ -30,33 +30,38 @@ const login = P.coroutine(function*(driver, username, password) {
   yield driver.switchTo().defaultContent();
 });
 
+const setAccountPayment = P.coroutine(function*(driver, index) {
+  yield driver.findElements(By.className('payeeAccount'))
+    .then(elts => (elts[index] != null) ? elts[index].click() : P.resolve());
+
+  yield P.delay(1000);
+
+  yield driver.findElements(By.id('header-paymentDueAmountOption_' + index))
+  .then(elts => {
+    const elt = elts[0];
+    if (elt != null) {
+      console.info('setting payment for index ',  + index);
+      return driver.executeScript("arguments[0].scrollIntoView(true);", elt)
+        .then(() => driver.actions().click(elt).sendKeys(webdriver.Key.ENTER).perform())
+        .then(() => P.delay(5000))
+    } else {
+      return P.resolve();
+    }
+  });
+
+  yield P.delay(1000);
+});
+
 const payBills = P.coroutine(function*(driver) {
   yield driver.navigate().to('https://secure01c.chase.com/web/auth/dashboard#/dashboard/payMultipleBills/payments/index')
   yield P.delay(PAGE_LOAD_DELAY_MILLIS);
 
-  const cardNums = [0,1,2,3];
+  const cardNums = [1, 3];
 
-  // open the payment dropdowns
-  yield P.reduce(cardNums , (chain, index) => P.resolve(chain).then(() =>
-    driver.findElements(By.className('payeeAccount'))
-      .then(elts => (elts[index] != null) ? elts[index].click() : P.resolve())
-      .then(() => P.delay(1000))
+  // open the payment dropdowns and select "pay current amount" on each.
+  yield P.reduce(cardNums , (chain, index) =>
+    P.resolve(chain).then(() => setAccountPayment(driver, index)
   ), P.resolve());
-
-  // set payment dropdowns to current amount
-  yield P.reduce(cardNums, (chain, index) => P.resolve(chain).then(() =>
-    driver.findElements(By.id('header-paymentDueAmountOption_' + index))
-    .then(elts => {
-      console.info(elts);
-      const elt = elts[0];
-      if (elt != null) {
-        return driver.executeScript("arguments[0].scrollIntoView(true);", elt)
-          .then(() => driver.actions().click(elt).sendKeys(webdriver.Key.ENTER).perform())
-      } else {
-        return P.resolve();
-      }
-    }).then(() => P.delay(1000))
-  ), P.resolve())
 
   // click the pay button
   driver.findElement(By.id('verify-bill-payments')).click();
@@ -65,6 +70,8 @@ const payBills = P.coroutine(function*(driver) {
 
   // click the confirm button
   driver.findElement(By.id('confirm-bill-payments')).click();
+
+  yield P.delay(PAGE_LOAD_DELAY_MILLIS);
 });
 
 const scriptRunner = P.coroutine(function*(username, password) {
@@ -72,15 +79,22 @@ const scriptRunner = P.coroutine(function*(username, password) {
     .forBrowser('chrome')
     .build();
 
-  yield P.delay(PAGE_LOAD_DELAY_MILLIS);
-
-  yield login(driver, username, password);
-
-  yield P.delay(PAGE_LOAD_DELAY_MILLIS);
-
-  yield payBills(driver);
-
-  yield driver.quit();
+  try {
+    yield P.delay(PAGE_LOAD_DELAY_MILLIS);
+    yield login(driver, username, password);
+    yield P.delay(PAGE_LOAD_DELAY_MILLIS);
+    yield payBills(driver);
+  } catch (e) {
+    console.error('driver encountered an error: ');
+    console.error(e.message);
+    console.error(e.stack);
+    throw e;
+  } finally {
+    // wait for UI actions to finish
+    console.info('cleaning up');
+    yield P.delay(10000);
+    yield driver.quit();
+  }
 });
 
 // script
